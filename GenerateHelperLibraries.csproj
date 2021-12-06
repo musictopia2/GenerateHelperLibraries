@@ -11,8 +11,9 @@
 		The second purpose is to create helper libraries to be used on many projects to make up for the difficulty of referencing nuget packages.
 		</Description>
 		<PackageProjectUrl>
-			
+			https://github.com/musictopia2/GenerateHelperLibraries
 		</PackageProjectUrl>
+		<Authors>musictopia</Authors>
 	</PropertyGroup>
 	<ItemGroup>
 		<None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
