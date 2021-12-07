@@ -1,4 +1,5 @@
 ﻿using Microsoft.CodeAnalysis;
+using System;
 using System.Text;
 namespace GenerateHelperLibraries;
 [Generator]
@@ -12,6 +13,11 @@ public class MySourceGenerator : ISourceGenerator
         string content = text.GetCSharpString();
         content = content.RemoveAttribute("IncludeCode");
         content = content.RemoveAttribute("IgnoreCode");
+        string others = "#nullable enable";
+        if (content.StartsWith(others) == false)
+        {
+            content = $"{others}{Environment.NewLine}{content}";
+        }
         builder.AppendLine($@"{spaces}text = @""{content}"";");
         builder.AppendLine($@"{spaces}context.AddSource(""{fileName}"", text);");
     }
