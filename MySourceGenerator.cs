@@ -31,7 +31,7 @@ public class MySourceGenerator : ISourceGenerator
         builder.AppendLine("namespace SourceCodeHelpers.Utilities;");
         builder.AppendLine("public static class BuilderExtensions");
         builder.AppendLine("{");
-        builder.AppendLine("    public static void BuildSourceCode(this GeneratorExecutionContext context)");
+        builder.AppendLine("    public static void BuildSourceCode(this IAddSource context)"); //a breaking change.  so this can be supported from incremental source generators which means increasing version (because of breaking change)
         builder.AppendLine("    {");
         builder.AppendLine("        string text;");
         bool hadOne = false;
