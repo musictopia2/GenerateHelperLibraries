@@ -50,6 +50,11 @@ public class MySourceGenerator : ISourceGenerator
             {
                 continue; //you cannot generate source code for syntax receivers
             }
+            if (item.ToString().Contains("public interface IAddSource"))
+            {
+                //if somehow the part from the first library appears, needs to remove it.  otherwise, causes problems later.  another source generator should fulfill this (if possible).
+                continue;
+            }
             bool includSingle = item.DidIncludeCode();
             bool ignoreSingle = item.DidIgnoreCode();
             if (ignoreSingle && includSingle)
