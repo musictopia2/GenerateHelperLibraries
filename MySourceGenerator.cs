@@ -42,9 +42,13 @@ public class MySourceGenerator : ISourceGenerator
             {
                 continue; //because there was none.
             }
+            if (item.ToString().Contains("IIncrementalGenerator"))
+            {
+                continue; //you cannot generate source code for itself obviously //has to be t
+            }
             if (item.ToString().Contains("ISourceGenerator"))
             {
-                continue; //you cannot generate source code for itself obviously
+                continue; //2 situations.  this means you can now support the new iincrementalgenerator.
             }
             if (item.ToString().Contains("ISyntaxReceiver"))
             {
