@@ -1,96 +1,150 @@
 ﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
+using System.Linq;
 using System.Text;
 namespace GenerateHelperLibraries;
-[Generator]
-public class MySourceGenerator : ISourceGenerator
+[Generator] //this is important so it knows this class is a generator which will generate code for a class using it.
+public class MySourceGenerator : IIncrementalGenerator
 {
-    private void AppendToBuilder(ref StringBuilder builder, SyntaxTree tree)
+    public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        string text = tree.ToString();
-        string fileName = tree.GetFileNameForCopy();
-        string spaces = "        ";
-        string content = text.GetCSharpString();
-        content = content.RemoveAttribute("IncludeCode");
-        content = content.RemoveAttribute("IgnoreCode");
-        string others = "#nullable enable";
-        if (content.StartsWith(others) == false)
+        var declares1 = context.SyntaxProvider.CreateSyntaxProvider(
+            (s, _) => s is BaseTypeDeclarationSyntax,
+            (ctx, _) => (BaseTypeDeclarationSyntax)ctx.Node)
+        .Where(n => n is not null)!;
+
+        // Combine with compilation
+        var declares2 = context.CompilationProvider.Combine(declares1.Collect());
+
+        var declares3 = declares2.SelectMany(static (pair, _) =>
         {
-            content = $"{others}{Environment.NewLine}{content}";
-        }
-        builder.AppendLine($@"{spaces}text = @""{content}"";");
-        builder.AppendLine($@"{spaces}context.AddSource(""{fileName}"", text);");
+            Compilation compilation = pair.Left;
+            ImmutableArray<BaseTypeDeclarationSyntax> declarations = pair.Right;
+            //found out i did not even need the compilation now.
+            // Group by syntax tree (one per file)
+            var grouped = declarations
+                .GroupBy(d => d.SyntaxTree)
+                .Select(g => g.OrderBy(d => d.SpanStart).First()); // first declaration in file
+
+            // Convert to hashset for GetResults
+            var start = ImmutableHashSet.CreateRange(grouped);
+            return GetResults(start);
+        });
+
+        var declares4 = declares3.Collect();
+        context.RegisterSourceOutput(declares4, Execute);
     }
-    public void Execute(GeneratorExecutionContext context)
+    //decided to not worry if its partial.  since if it needs to be partial, will get immediate compile errors anyways.
+    private bool IsSyntaxTarget(SyntaxNode syntax)
     {
-        Compilation compilation = context.Compilation;
-        bool includeglobal = compilation.DidIncludeCodeAtLeastOnce();
-        StringBuilder builder = new();
-        builder.AppendLine("global using SourceCodeHelpers.Utilities;");
-        builder.AppendLine("using Microsoft.CodeAnalysis;");
-        builder.AppendLine("namespace SourceCodeHelpers.Utilities;");
-        builder.AppendLine("internal static class BuilderExtensions");
-        builder.AppendLine("{");
-        builder.AppendLine("    internal static void BuildSourceCode(this IAddSource context)"); //a breaking change.  so this can be supported from incremental source generators which means increasing version (because of breaking change)
-        builder.AppendLine("    {");
-        builder.AppendLine("        string text;");
-        bool hadOne = false;
-        foreach (var item in compilation.SyntaxTrees)
+        if (syntax is BaseTypeDeclarationSyntax)
+        {
+            return true;
+        }
+        return false;
+        //return syntax is ClassDeclarationSyntax ctx &&
+        //    ctx.IsPublic();
+    }
+    private BaseTypeDeclarationSyntax? GetTarget(GeneratorSyntaxContext context)
+    {
+        //until i can figure out something else.
+        return (BaseTypeDeclarationSyntax)context.Node;
+        //var ourClass = context.GetClassNode(); //can use the sematic model at this stage
+        //var symbol = context.GetClassSymbol(ourClass);
+        //return ourClass; //decided to not do the extras anymore.
+    }
+    private static ImmutableHashSet<ResultsModel> GetResults(
+        ImmutableHashSet<BaseTypeDeclarationSyntax> nodes
+        )
+    {
+        var builder = ImmutableHashSet.CreateBuilder<ResultsModel>();
+
+        foreach (var node in nodes)
         {
 
-            if (item.ToString().Contains("namespace ") == false)
-            {
-                continue; //because there was none.
-            }
-            if (item.ToString().Contains("IIncrementalGenerator"))
-            {
-                continue; //you cannot generate source code for itself obviously //has to be t
-            }
-            if (item.ToString().Contains("ISourceGenerator"))
-            {
-                continue; //2 situations.  this means you can now support the new iincrementalgenerator.
-            }
-            if (item.ToString().Contains("ISyntaxReceiver"))
-            {
-                continue; //you cannot generate source code for syntax receivers
-            }
-            bool includSingle = item.DidIncludeCode();
-            bool ignoreSingle = item.DidIgnoreCode();
-            if (ignoreSingle && includSingle)
-            {
-                string error = "Cannot include and ignore code at the same time";
-                //not reporting errors (has to test that next).
-                context.ReportError(error, "IgnoreIncludeConflict");
-                return;
-            }
-            if (item.DidIgnoreCode() && includeglobal == true)
-            {
-                string error = "Unable to generate source code because you ignored code even though you manually marked some to include";
-                context.ReportError(error, "IgnoreIncludeConflict");
-                return;
-            }
-            if (ignoreSingle)
-            {
-                continue; //because its being ignored.
-            }
-            if (includeglobal == true && includSingle == false)
+
+
+            var result = new ResultsModel();
+
+
+
+            // Try to extract namespace
+            var ns = GetNamespace(node);
+            result.Namespace = ns ?? "";
+
+            // Extract the name (works for class, record, enum, struct)
+            result.MainName = node.Identifier.Text;
+
+            // Full text of the file or node
+            // If you want the entire file’s text:
+            result.CompleteText = node.SyntaxTree.GetText().ToString();
+
+            if (result.CompleteText.Contains("IIncrementalGenerator"))
             {
                 continue;
             }
-            hadOne = true;
-            AppendToBuilder(ref builder, item);
+            if (result.CompleteText.Contains("ISourceGenerator")) //just in case i have some old stuff.
+            {
+                continue;
+            }
+            if (result.CompleteText.Contains("ISyntaxReceiver"))
+            {
+                continue;
+            }
+            result.ProcessIgnoreCode();
+            result.ProcessIncludeCode();
+
+            string others = "#nullable enable";
+            if (result.CompleteText.StartsWith(others) == false)
+            {
+                StringBuilder temps = new();
+                temps.AppendLine(others);
+                temps.Append(result.CompleteText);
+                result.CompleteText = temps.ToString();
+            }
+
+
+
+            // If you only want this node’s text:
+            // result.CompleteText = typeDecl.ToFullString();
+
+            builder.Add(result);
+
         }
-        if (hadOne == false)
-        {
-            return;
-        }
-        builder.AppendLine("    }");
-        builder.AppendLine("}");
-        string results = builder.ToString();
-        context.AddSource("importlibrary.g", results);
+        return builder.ToImmutable();
     }
-    public void Initialize(GeneratorInitializationContext context)
+
+    /// <summary>
+    /// Walks up the syntax tree to find the containing namespace.
+    /// </summary>
+    private static string? GetNamespace(SyntaxNode node)
     {
-        
+        SyntaxNode? current = node;
+        while (current != null)
+        {
+            if (current is BaseNamespaceDeclarationSyntax ns)
+            {
+                var name = ns.Name.ToString();
+
+                // Support nested namespaces (namespace A.B.C)
+                var parentNs = GetNamespace(ns.Parent!);
+                if (parentNs != null)
+                {
+                    return parentNs + "." + name;
+                }
+
+                return name;
+            }
+            current = current.Parent;
+        }
+
+        return null;
+    }
+
+    private void Execute(SourceProductionContext context, ImmutableArray<ResultsModel> list)
+    {
+        EmitClass emit = new(list, context);
+        emit.Emit(); //start out with console.  later do reals once ready.
     }
 }
