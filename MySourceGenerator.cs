@@ -63,7 +63,14 @@ public class MySourceGenerator : IIncrementalGenerator
         foreach (var node in nodes)
         {
 
+            var path = node.SyntaxTree.FilePath?.ToLowerInvariant() ?? "";
 
+            if (path.EndsWith(".g.cs") ||
+                path.EndsWith(".g") ||
+                path.EndsWith(".generated.cs"))
+            {
+                continue; // skip generated files completely
+            }
 
             var result = new ResultsModel();
 
@@ -94,6 +101,9 @@ public class MySourceGenerator : IIncrementalGenerator
             }
             result.ProcessIgnoreCode();
             result.ProcessIncludeCode();
+
+
+
 
             string others = "#nullable enable";
             if (result.CompleteText.StartsWith(others) == false)
