@@ -1,18 +1,34 @@
-﻿namespace GenerateHelperLibraries;
+﻿using System;
+using System.Linq;
+
+namespace GenerateHelperLibraries;
 internal static class Extensions
 {
-
     public static void ProcessIgnoreCode(this ResultsModel result)
     {
         string text = result.CompleteText;
-        text = text.Replace("//[IgnoreCode", "");
-        result.IgnoreCode = text.Contains("[IgnoreCode");
+
+        // Detect the marker
+        result.IgnoreCode = text.Contains("[IgnoreCode]");
+
+        // Remove the entire line containing the marker
+        var lines = text
+            .Split(["\r\n", "\n", "\r"], StringSplitOptions.None)
+            .Where(l => !l.Contains("[IgnoreCode]"));
+
+        result.CompleteText = string.Join("\n", lines);
     }
+
     public static void ProcessIncludeCode(this ResultsModel result)
     {
         string text = result.CompleteText;
-        text = text.Replace("//[IncludeCode", "");
 
-        result.IncludeCode = text.Contains("[IncludeCode");
+        result.IncludeCode = text.Contains("[IncludeCode]");
+
+        var lines = text
+            .Split(["\r\n", "\n", "\r"], StringSplitOptions.None)
+            .Where(l => !l.Contains("[IncludeCode]"));
+
+        result.CompleteText = string.Join("\n", lines);
     }
 }
